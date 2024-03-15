@@ -2,3 +2,10 @@ pandas
 numpy
 matplotlib
 scikit-learn
+
+stumpy
+sktime
+tslearn
+
+dtaidistance
+dit

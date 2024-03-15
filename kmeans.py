@@ -1,7 +1,7 @@
 # kmeans
 import numpy as np
 
-# np.random.seed(14)
+np.random.seed(123)
 
 class KMeans:
     def __init__(self, k:int) -> None:
@@ -25,7 +25,7 @@ class KMeans:
 
             # Calculate the distances between each data point and all the centroids
             for point in X:
-                distances = KMeans.distance_euclidean(point, self.centroids)
+                distances = __class__.distance_euclidean(point, self.centroids)
                 label = np.argmin(distances) # Get the index of the minimum distance from a centroid
                 
                 labels.append(label) # Assign that index/label/cluster to that data point
@@ -54,6 +54,20 @@ class KMeans:
         return labels
 
 
+    def predict(self, X):
+        # Calculate the distance between that point and all centroids
+        X = np.atleast_2d(X)
+        labels = []
+        
+        for point in X:
+            distances = __class__.distance_euclidean(point, self.centroids)
+            label = np.argmin(distances) # Get the index of the minimum distance from a centroid
+            
+            labels.append(label) # Assign that index/label/cluster to that data point
+
+        return labels
+
+
 class KMeansPlus:
     def __init__(self, k:int) -> None:
         self.k = k
@@ -71,7 +85,7 @@ class KMeansPlus:
         distance_matrix = []
         for point in X:
             # Calculate the distance between the centroid and that point
-            distance = KMeans.distance_euclidean(point, self.centroids)
+            distance = __class__.distance_euclidean(point, self.centroids)
             distance_matrix.append(distance)
 
         # Normalize the distance matrix values
@@ -97,7 +111,7 @@ class KMeansPlus:
 
             # Calculate the distances between each data point and all the centroids
             for point in X:
-                distances = KMeans.distance_euclidean(point, self.centroids)
+                distances = __class__.distance_euclidean(point, self.centroids)
                 label = np.argmin(distances) # Get the index of the minimum distance from a centroid
                 
                 labels.append(label) # Assign that index/label/cluster to that data point
@@ -118,26 +132,43 @@ class KMeansPlus:
 
             # Early Break, when the change in distances is less that 1e-4
             if np.max(abs(self.centroids - previous_centroid)) <= 1e-20:
-                print(f'Converged after {_ + 1} iterations')
-                print("Final Centroids : \n", np.sort(self.centroids, axis=0), '\n')
-                
+                # print(f'Converged after {_ + 1} iterations')
+                # print("Final Centroids : \n", np.sort(self.centroids, axis=0), '\n')
                 break
         
         return labels     
 
 
+    def predict(self, X):
+        # Calculate the distance between that point and all centroids
+        X = np.atleast_2d(X)
+        labels = []
+        
+        for point in X:
+            distances = __class__.distance_euclidean(point, self.centroids)
+            label = np.argmin(distances) # Get the index of the minimum distance from a centroid
+            
+            labels.append(label) # Assign that index/label/cluster to that data point
+
+        return labels
+
+
+
 if __name__ == "__main__":
     import pandas as pd
-    import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt  # noqa
 
     data = pd.read_csv("/Users/jerryinyang/Code/seqluster/data.csv")
 
     X = data[['x', 'y']].to_numpy()
+    X = np.random.permutation(X)
 
     kmeans = KMeansPlus(4)
-    
     labels = kmeans.fit(X)
 
-    plt.scatter(X[:,0], X[:,1], c=labels)
-    plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
-    plt.show()
+    print(labels[-10:])
+    print(kmeans.predict(X[-10:]))
+
+    # plt.scatter(X[:,0], X[:,1], c=labels)
+    # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
+    # plt.show()
