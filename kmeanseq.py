@@ -1,7 +1,8 @@
 import numpy as np
 from kmeans import KMeansPlus
 from dtaidistance import dtw  # noqa
-from collections import deque
+from collections import deque # noqa
+
 
 class KMeansSeq(KMeansPlus): 
     """
