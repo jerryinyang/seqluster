@@ -102,7 +102,7 @@ class KMeansSeq(KMeansPlus):
                 self._batch_cluster_counts += counts
                 print(counts)
                 print('Self Count : ', self._batch_cluster_counts)
-            except:
+            except Exception :
                 print(self._batch_cluster_counts)
                 print(counts)
                 print(labels)
