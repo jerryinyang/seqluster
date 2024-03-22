@@ -9,7 +9,7 @@ class KMeansSeq(KMeansPlus):
     The model uses a kmeans++ clustering model, and sequentially updates the centroid definitions.
     """ 
 
-    def __init__(self, k, confluence_metric=None, batch_size=50, learning_rate=.00001, change_threshold_std=5, change_threshold_percent=0.00001) -> None:
+    def __init__(self, k, confluence_metric=None, batch_size=100, learning_rate=.00001, change_threshold_std=5) -> None:
         super().__init__(k)
 
         self.k = k
@@ -19,12 +19,13 @@ class KMeansSeq(KMeansPlus):
 
         # Parameters for tracking change in 
         self.change_threshold_std = change_threshold_std
-        self.change_threshold_percent = change_threshold_percent
 
         self._distance_distr_count = 0
         self._distance_distr_mean = 0
         self._distance_distr_std = 0
         self._distance_distr_variance = 0
+
+        self._distance_delta_threshold = None
 
         # Stores Cluster Centroids
         self.centroids = None
@@ -63,7 +64,6 @@ class KMeansSeq(KMeansPlus):
         # Calculate the distance between that point and all centroids
         X = np.atleast_2d(X)
         labels = []
-        cluster_ids = range(self.k)
         
         for point in X:
             distances = KMeansPlus.distance_euclidean(point, self.centroids)
@@ -73,52 +73,46 @@ class KMeansSeq(KMeansPlus):
 
         # Enable sequential learning from new data
         if seq_learn:
-            # 1:  Collect data in batches
-            # Initialize the array with the same shape as a centroid
-            if self._batch_distance_sums is None:
-                self._batch_centroids = np.zeros_like(self.centroids)
-                self._batch_distance_sums = np.zeros(self.k)
-                self._batch_cluster_counts = np.zeros(self.k)
-
-            # For each new data point, add them to the current batch sum for its respective cluster
-            labels = np.array(labels)
-
-            # Compute the batch's average intra-cluster distance
-            distances = np.linalg.norm(X - self.centroids[labels], axis=1)
-            sums = np.array([np.sum(distances[labels == label]) for label in range(self.k)])
-            # counts = np.bincount(labels)
-
-            counts = np.zeros_like(cluster_ids, dtype=int)
-            for val in range(self.k):
-                counts[cluster_ids.index(val)] = np.sum(labels == val)
-
-            # Sum all data points by cluster
-            point_sums = np.array([np.sum(X[labels == label], axis=0) for label in range(self.k)])
-            centroids = np.array([self._batch_centroids[label] * self._batch_cluster_counts[label] for label in range(self.k)]) + point_sums
-
-            # Update batch with new data
-            self._batch_distance_sums += sums
-            try:
-                self._batch_cluster_counts += counts
-                print(counts)
-                print('Self Count : ', self._batch_cluster_counts)
-            except Exception :
-                print(self._batch_cluster_counts)
-                print(counts)
-                print(labels)
-                exit()
-
-            self._batch_centroids = np.array([centroids[label] / counts[label] for label in range(self.k)] if counts[label] > 0 else self._batch_centroids[label])
-
-            # print(self._batch_distance_sums)
-            # print(self._batch_cluster_counts)
-            # print(self._batch_centroids)
-            # print(self.centroids)
-
-            # Evaluate the centroids
-            self.evaluate_centroids()
+            self.sequential_learn(X, np.array(labels))
 
         return labels
+
+
+    def sequential_learn(self, X, labels):
+        """
+        Perform Sequential Learning Operations
+        """
+        # For each new data point, add them to the current batch sum for its respective cluster
+        cluster_ids = range(self.k)
+
+        # 1:  Collect data in batches
+        # Initialize the array with the same shape as a centroid
+        if self._batch_distance_sums is None:
+            self._batch_centroids = np.zeros_like(self.centroids)
+            self._batch_distance_sums = np.zeros(self.k)
+            self._batch_cluster_counts = np.zeros(self.k)
+
+        # 2. Compute the new data's average intra-cluster distance
+        labels_count = np.bincount(labels, minlength=self.k)
+        centroid_point_distances = np.linalg.norm(X - self.centroids[labels], axis=1)
+        intracluster_distance_sums = np.array([np.sum(centroid_point_distances[labels == label], axis=0) for label in cluster_ids])
+
+        # 3. Compute the centroid data point for each cluster
+        # Add new cluster sums to the stored batch cluster sums  
+        _cluster_sums = np.array([np.sum(X[labels == label], axis=0) for label in cluster_ids])
+        batch_cluster_sums = self._batch_centroids * self._batch_cluster_counts[:, np.newaxis]
+        cluster_centroids = batch_cluster_sums + _cluster_sums
+
+        # 4. Update batch with new data
+        self._batch_cluster_counts += labels_count # Counts
+        self._batch_distance_sums += intracluster_distance_sums
+        # self._batch_centroids = np.array([centroids[label] / counts[label] for label in range(self.k)] if counts[label] > 0 else self._batch_centroids[label])
+        self._batch_centroids = cluster_centroids / self._batch_cluster_counts[:, np.newaxis]
+
+        # print('Batch Centroid : \n' , self._batch_centroids)
+
+        # 5. Evaluate and Update the centroids
+        self.evaluate_centroids()
 
 
     def update_basedata(self, cluster_label, centroid, count, mean_distance):
@@ -140,18 +134,20 @@ class KMeansSeq(KMeansPlus):
         Evaluate the centroids with the current batch's data. Default trigger is maximum batch size
         """
 
-        #o Learning Rate Factors
+        # Learning Rate Factors
         alpha = 1 - self.learning_rate
         beta = self.learning_rate
 
-        # Calculate new base data
+        # 1. Calculate new base data, and the percentage change from current base data 
         new_count = (alpha * self._base_cluster_counts) + (beta * self._batch_cluster_counts)
         new_mean_distances = ((alpha * self._base_mean_distance * self._base_cluster_counts) + (beta * self._batch_distance_sums)) / new_count
-        distance_delta = new_mean_distances / self._base_mean_distance
+        distance_delta = new_mean_distances / self._base_mean_distance # 1 - [this] gives the percentage change from the current base data
 
         # Calculate the threshold change in intra-cluster distance to trigger a centroid update
+        previous_delta_threshold = self._distance_delta_threshold
+
         mean_distance_delta = np.mean(distance_delta)
-        distance_delta_threshold = self.change_threshold_std * mean_distance_delta
+        self._distance_delta_threshold = self.change_threshold_std * mean_distance_delta
 
         self._distance_distr_count += 1
         delta = mean_distance_delta - self._distance_distr_mean
@@ -160,7 +156,7 @@ class KMeansSeq(KMeansPlus):
         self._distance_distr_std = np.sqrt(self._distance_distr_variance / self._distance_distr_count)
 
         if not self._distance_distr_std == 0:
-            distance_delta_threshold = self.change_threshold_std * self._distance_distr_std
+            self._distance_delta_threshold = self.change_threshold_std * self._distance_distr_std
 
         new_centroid = (
             (alpha * self.centroids * self._base_cluster_counts[:, None]) +  # Broadcasting
@@ -177,18 +173,20 @@ class KMeansSeq(KMeansPlus):
             batch_count = self._batch_cluster_counts[label]
             dist_change = distance_delta[label] - 1
 
+            print(self._distance_delta_threshold)
+            continue
+
             # Check conditions for cluster centroid update
             # 1. Batch size is equal to or greater than self.batch_size
             # 2. Intra-cluster distance increases above a threshld
             #  (batch_count >= self.batch_size) or
 
-            if (dist_change >= distance_delta_threshold):            
+            if (dist_change >= self._distance_delta_threshold):            
                 old_centroid = self.centroids[label]
                 self.update_basedata(cluster_label, centroid, count, mean_distance)
 
                 # print(f'Distance Change = {dist_change * 100}%')
-                # print(f'Centroid Updated at index {label}; from {old_centroid} to {self.centroids[label]}')
-    
+                print(f'Centroid Updated at index {label}; from {old_centroid} to {self.centroids[label]}')
 
         # print(f"Centroid : \n{self.centroids}")
         return 
@@ -219,12 +217,13 @@ if __name__ == "__main__":
     X = data[['x', 'y']].to_numpy()
     X = np.random.permutation(X)
 
-    kmeans = KMeansSeq(4, learning_rate=0.1)
+    kmeans = KMeansSeq(4, learning_rate=0.001)
     labels = kmeans.fit(X)
 
-    for iter in range(200):
+    for iter in range(100):
         print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
         kmeans.predict(X[-500:-300], seq_learn=True)
+        print('\n\n')
 
 
 
