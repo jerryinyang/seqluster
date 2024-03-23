@@ -78,6 +78,8 @@ class KMeansPlus:
         return np.sqrt(np.sum((point_a - point_b) ** 2, axis=1))
 
     def fit(self, X, max_iterations=200):
+        X = np.array(X)
+
         # Randomly initialize the centroids within the maximum and minimum values of each dimension
         # 1. Initialize a random plot
         self.centroids = [np.random.uniform(np.amin(X, axis=0), np.amax(X, axis=0))]
@@ -99,8 +101,9 @@ class KMeansPlus:
             p=distance_matrix,
             size=self.k - 1
         )
+         
+        # remaining_centroids = [X[index] for index in centroid_index]
         remaining_centroids = X[centroid_index]
-
         self.centroids = np.vstack((self.centroids, remaining_centroids))
     
         # print("Starting Centroids : \n", self.centroids, '\n')
@@ -166,8 +169,6 @@ if __name__ == "__main__":
     kmeans = KMeansPlus(4)
     labels = kmeans.fit(X)
 
-    print(labels[-10:])
-    print(kmeans.predict(X[-10:]))
 
     # plt.scatter(X[:,0], X[:,1], c=labels)
     # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)

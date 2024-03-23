@@ -24,8 +24,9 @@ class KMeansSeq(KMeansPlus):
         self._distance_distr_mean = 0
         self._distance_distr_std = 0
         self._distance_distr_variance = 0
+        self._distance_distr_stable = False
 
-        self._distance_delta_threshold = None
+        self._distance_delta_threshold = 0
 
         # Stores Cluster Centroids
         self.centroids = None
@@ -61,6 +62,9 @@ class KMeansSeq(KMeansPlus):
 
 
     def predict(self, X, seq_learn=False):
+        # Assert that model has been trained
+        assert self.centroids is not None, "Model has not been trained!"
+
         # Calculate the distance between that point and all centroids
         X = np.atleast_2d(X)
         labels = []
@@ -155,13 +159,21 @@ class KMeansSeq(KMeansPlus):
         self._distance_distr_variance += delta * (mean_distance_delta - self._distance_distr_mean)
         self._distance_distr_std = np.sqrt(self._distance_distr_variance / self._distance_distr_count)
 
+        # Update the distance delta threshold
         if not self._distance_distr_std == 0:
             self._distance_delta_threshold = self.change_threshold_std * self._distance_distr_std
+
+            # Check for staibility of standard deviation calculation
+            # The change in standard deviation should be less than / equal to 1%
+            if abs((self._distance_delta_threshold / previous_delta_threshold) - 1) <= 0.01:
+                self._distance_distr_stable = True
 
         new_centroid = (
             (alpha * self.centroids * self._base_cluster_counts[:, None]) +  # Broadcasting
             (beta * self._batch_centroids)
         ) / new_count[:, None]  # Broadcasting
+
+        print("Standard Deviation Stability : ", self._distance_distr_stable)
 
         # Update the base data
         for label in range(self.k):
@@ -170,25 +182,17 @@ class KMeansSeq(KMeansPlus):
             count = new_count[label]
             mean_distance = new_mean_distances[label]
 
-            batch_count = self._batch_cluster_counts[label]
-            dist_change = distance_delta[label] - 1
-
-            print(self._distance_delta_threshold)
-            continue
+            dist_change = abs(distance_delta[label] - 1)
 
             # Check conditions for cluster centroid update
-            # 1. Batch size is equal to or greater than self.batch_size
-            # 2. Intra-cluster distance increases above a threshld
-            #  (batch_count >= self.batch_size) or
+            # Intra-cluster distance increases above a threshold
 
-            if (dist_change >= self._distance_delta_threshold):            
-                old_centroid = self.centroids[label]
+            if ( (dist_change >= self._distance_delta_threshold)):        
+                # old_centroid = self.centroids[label]
                 self.update_basedata(cluster_label, centroid, count, mean_distance)
+                # print(f'Centroid Updated at index {label}; from {old_centroid} to {self.centroids[label]}')
 
-                # print(f'Distance Change = {dist_change * 100}%')
-                print(f'Centroid Updated at index {label}; from {old_centroid} to {self.centroids[label]}')
-
-        # print(f"Centroid : \n{self.centroids}")
+        print(f"Centroid : \n{self.centroids}")
         return 
 
 
@@ -210,23 +214,75 @@ if __name__ == "__main__":
     import pandas as pd
     import matplotlib.pyplot as plt  # noqa
 
-    np.random.seed(14)
+    prices = pd.read_parquet('prices.parquet')
 
-    data = pd.read_csv("/Users/jerryinyang/Code/seqluster/data.csv")
+    raw_data = prices["close"].dropna(axis=0)
+    raw_data = raw_data.to_numpy()
 
-    X = data[['x', 'y']].to_numpy()
-    X = np.random.permutation(X)
+    # Generate windows
+    window_size = 24
 
-    kmeans = KMeansSeq(4, learning_rate=0.001)
+    X = []
+    
+    for index in range(window_size, len(raw_data)):
+        start_index = index - window_size
+        end_index = index
+
+        X.append(raw_data[start_index : end_index])
+
+    # Split X Data
+    split_percent = .7
+    split_index = int(round(len(X) * split_percent))
+    
+    X, X_test = np.array(X[:split_index]), np.array(X[split_index:])
+    # X = np.random.permutation(X)
+    # X_test = np.random.permutation(X_test)
+
+    kmeans = KMeansSeq(4, learning_rate=0.001, change_threshold_std=3)
     labels = kmeans.fit(X)
 
-    for iter in range(100):
+    for iter in range(20):
+        start_index = iter * 200
+        end_index = min(start_index + 200 + 1, len(X_test))
+
+        test_data = np.array(X_test[start_index : end_index])
+
         print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
-        kmeans.predict(X[-500:-300], seq_learn=True)
+        kmeans.predict(test_data, seq_learn=True)
+
+        if end_index == len(X_test):
+            print('Broken')
+            break
         print('\n\n')
-
-
 
     # plt.scatter(X[:,0], X[:,1], c=labels)
     # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
     # plt.show()
+    
+
+
+# if __name__ == "__main__":
+#     import pandas as pd
+#     import matplotlib.pyplot as plt  # noqa
+
+#     np.random.seed(14)
+
+#     # data = pd.read_csv("/Users/jerryinyang/Code/seqluster/data.csv")
+
+#     X = data[['x', 'y']].to_numpy()
+#     X = np.random.permutation(X)
+
+#     kmeans = KMeansSeq(4, learning_rate=0.001)
+#     labels = kmeans.fit(X)
+
+#     for iter in range(150):
+#         # random_indices = np.random.randint(0, len(X), size=200)
+#         # test_data = X[random_indices]
+
+#         print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
+#         kmeans.predict(X, seq_learn=True)
+#         print('\n\n')
+
+#     # plt.scatter(X[:,0], X[:,1], c=labels)
+#     # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
+#     # plt.show()
