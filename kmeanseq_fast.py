@@ -63,17 +63,3 @@ if __name__ == "__main__":
     labels = kmeans.fit(X)
 
     print(labels)
-
-    # for iter in range(20):
-    #     start_index = iter * 200
-    #     end_index = min(start_index + 200 + 1, len(X_test))
-
-    #     test_data = np.array(X_test[start_index : end_index])
-
-    #     print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
-    #     kmeans.predict(test_data, seq_learn=True)
-
-    #     if end_index == len(X_test):
-    #         print('Broken')
-    #         break
-    #     print('\n\n')
