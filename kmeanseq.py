@@ -3,6 +3,8 @@ from kmeans import KMeansPlus
 from dtaidistance import dtw  # noqa
 from collections import deque # noqa
 
+from utils import clear_terminal, debug# noqa
+
 
 class KMeansSeq(KMeansPlus): 
     """
@@ -31,9 +33,6 @@ class KMeansSeq(KMeansPlus):
         # Stores Cluster Centroids
         self.centroids = None
 
-        # Store the data for the current batch
-        self._data = None
-
         # Store the base data
         self._base_mean_distance = None
         self._base_cluster_counts = None
@@ -49,6 +48,8 @@ class KMeansSeq(KMeansPlus):
 
         # Get the centroids 
         self.centroids = kmeans.centroids
+        print('Staring Centroids : \n', self.centroids)
+        input()
 
         # Store the base stats
         # Calculate distances of each point to its assigned centroid
@@ -110,11 +111,12 @@ class KMeansSeq(KMeansPlus):
         # 4. Update batch with new data
         self._batch_cluster_counts += labels_count # Counts
         self._batch_distance_sums += intracluster_distance_sums
-        # self._batch_centroids = np.array([centroids[label] / counts[label] for label in range(self.k)] if counts[label] > 0 else self._batch_centroids[label])
-        self._batch_centroids = cluster_centroids / self._batch_cluster_counts[:, np.newaxis]
+        for label in cluster_ids:
+            if self._batch_cluster_counts[label] > 0:
+                self._batch_centroids[label] = cluster_centroids[label] / self._batch_cluster_counts[label]
 
-        # print('Batch Centroid : \n' , self._batch_centroids)
 
+        # print('Tested Batch Centroid : \n' , self._batch_centroids)
         # 5. Evaluate and Update the centroids
         self.evaluate_centroids()
 
@@ -130,6 +132,11 @@ class KMeansSeq(KMeansPlus):
         except Exception as e:
             raise e
         
+        # Reset the batch states
+        self._batch_centroids[cluster_label] = 0
+        self._batch_distance_sums[cluster_label] = 0
+        self._batch_cluster_counts[cluster_label] = 0
+
         return True
     
 
@@ -143,7 +150,7 @@ class KMeansSeq(KMeansPlus):
         beta = self.learning_rate
 
         # 1. Calculate new base data, and the percentage change from current base data 
-        new_count = (alpha * self._base_cluster_counts) + (beta * self._batch_cluster_counts)
+        new_count = self._base_cluster_counts + self._batch_cluster_counts
         new_mean_distances = ((alpha * self._base_mean_distance * self._base_cluster_counts) + (beta * self._batch_distance_sums)) / new_count
         distance_delta = new_mean_distances / self._base_mean_distance # 1 - [this] gives the percentage change from the current base data
 
@@ -179,18 +186,18 @@ class KMeansSeq(KMeansPlus):
         for label in range(self.k):
             cluster_label = label
             centroid = new_centroid[label]
+
             count = new_count[label]
             mean_distance = new_mean_distances[label]
 
             dist_change = abs(distance_delta[label] - 1)
 
             # Check conditions for cluster centroid update
-            # Intra-cluster distance increases above a threshold
-
-            if ( (dist_change >= self._distance_delta_threshold)):        
+            # Intra-cluster distance increases above a thresholds
+            if (self._distance_distr_stable and (dist_change >= self._distance_delta_threshold)):        
                 # old_centroid = self.centroids[label]
                 self.update_basedata(cluster_label, centroid, count, mean_distance)
-                # print(f'Centroid Updated at index {label}; from {old_centroid} to {self.centroids[label]}')
+                print(f'Centroid Updated at index {label}') # ; from {old_centroid} to {self.centroids[label]}')
 
         print(f"Centroid : \n{self.centroids}")
         return 
@@ -210,79 +217,80 @@ class KMeansSeq(KMeansPlus):
         return
     
         
-if __name__ == "__main__":
-    import pandas as pd
-    import matplotlib.pyplot as plt  # noqa
-
-    prices = pd.read_parquet('prices.parquet')
-
-    raw_data = prices["close"].dropna(axis=0)
-    raw_data = raw_data.to_numpy()
-
-    # Generate windows
-    window_size = 24
-
-    X = []
-    
-    for index in range(window_size, len(raw_data)):
-        start_index = index - window_size
-        end_index = index
-
-        X.append(raw_data[start_index : end_index])
-
-    # Split X Data
-    split_percent = .7
-    split_index = int(round(len(X) * split_percent))
-    
-    X, X_test = np.array(X[:split_index]), np.array(X[split_index:])
-    # X = np.random.permutation(X)
-    # X_test = np.random.permutation(X_test)
-
-    kmeans = KMeansSeq(4, learning_rate=0.001, change_threshold_std=3)
-    labels = kmeans.fit(X)
-
-    for iter in range(20):
-        start_index = iter * 200
-        end_index = min(start_index + 200 + 1, len(X_test))
-
-        test_data = np.array(X_test[start_index : end_index])
-
-        print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
-        kmeans.predict(test_data, seq_learn=True)
-
-        if end_index == len(X_test):
-            print('Broken')
-            break
-        print('\n\n')
-
-    # plt.scatter(X[:,0], X[:,1], c=labels)
-    # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
-    # plt.show()
-    
-
-
 # if __name__ == "__main__":
 #     import pandas as pd
 #     import matplotlib.pyplot as plt  # noqa
 
-#     np.random.seed(14)
+#     prices = pd.read_parquet('prices.parquet')
 
-#     # data = pd.read_csv("/Users/jerryinyang/Code/seqluster/data.csv")
+#     raw_data = prices["close"].dropna(axis=0)
+#     raw_data = raw_data.to_numpy()
 
-#     X = data[['x', 'y']].to_numpy()
-#     X = np.random.permutation(X)
+#     # Generate windows
+#     window_size = 24
 
-#     kmeans = KMeansSeq(4, learning_rate=0.001)
+#     X = []
+    
+#     for index in range(window_size, len(raw_data)):
+#         start_index = index - window_size
+#         end_index = index
+
+#         X.append(raw_data[start_index : end_index])
+
+#     # Split X Data
+#     split_percent = .7
+#     split_index = int(round(len(X) * split_percent))
+    
+#     X, X_test = np.array(X[:split_index]), np.array(X[split_index:])
+#     # X = np.random.permutation(X)
+#     # X_test = np.random.permutation(X_test)
+
+#     kmeans = KMeansSeq(4, learning_rate=0.001, change_threshold_std=3)
 #     labels = kmeans.fit(X)
 
-#     for iter in range(150):
-#         # random_indices = np.random.randint(0, len(X), size=200)
-#         # test_data = X[random_indices]
+#     for iter in range(20):
+#         start_index = iter * 200
+#         end_index = min(start_index + 200 + 1, len(X_test))
+
+#         test_data = np.array(X_test[start_index : end_index])
 
 #         print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
-#         kmeans.predict(X, seq_learn=True)
+#         kmeans.predict(test_data, seq_learn=True)
+
+#         if end_index == len(X_test):
+#             print('Broken')
+#             break
 #         print('\n\n')
 
 #     # plt.scatter(X[:,0], X[:,1], c=labels)
 #     # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
 #     # plt.show()
+    
+
+if __name__ == "__main__":
+    import pandas as pd
+    import matplotlib.pyplot as plt  # noqa
+
+    clear_terminal()
+    np.random.seed(14)
+
+    data = pd.read_csv("/Users/jerryinyang/Code/seqluster/data.csv")
+
+    X = data[['x', 'y']].to_numpy()
+    X = np.random.permutation(X)
+
+    kmeans = KMeansSeq(4, learning_rate=1)
+    labels = kmeans.fit(X)
+
+    for iter in range(2000):
+        random_indices = np.random.randint(0, len(X), size=400)
+        test_data = X[random_indices]
+
+        print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
+        kmeans.predict(test_data, seq_learn=True)
+        print('\n\n')
+
+    # plt.scatter(X[:,0], X[:,1], c=labels)
+    # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
+    # plt.show()
+        
