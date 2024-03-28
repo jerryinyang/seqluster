@@ -49,7 +49,6 @@ class KMeansSeq(KMeansPlus):
         # Get the centroids 
         self.centroids = kmeans.centroids
         print('Staring Centroids : \n', self.centroids)
-        input()
 
         # Store the base stats
         # Calculate distances of each point to its assigned centroid
@@ -151,6 +150,8 @@ class KMeansSeq(KMeansPlus):
 
         # 1. Calculate new base data, and the percentage change from current base data 
         new_count = self._base_cluster_counts + self._batch_cluster_counts
+        new_count_weighted = (alpha * self._base_cluster_counts) + (beta * self._batch_cluster_counts)
+
         new_mean_distances = ((alpha * self._base_mean_distance * self._base_cluster_counts) + (beta * self._batch_distance_sums)) / new_count
         distance_delta = new_mean_distances / self._base_mean_distance # 1 - [this] gives the percentage change from the current base data
 
@@ -170,15 +171,17 @@ class KMeansSeq(KMeansPlus):
         if not self._distance_distr_std == 0:
             self._distance_delta_threshold = self.change_threshold_std * self._distance_distr_std
 
-            # Check for staibility of standard deviation calculation
+            # Check for stability of standard deviation calculation
             # The change in standard deviation should be less than / equal to 1%
             if abs((self._distance_delta_threshold / previous_delta_threshold) - 1) <= 0.01:
                 self._distance_distr_stable = True
 
         new_centroid = (
             (alpha * self.centroids * self._base_cluster_counts[:, None]) +  # Broadcasting
-            (beta * self._batch_centroids)
-        ) / new_count[:, None]  # Broadcasting
+            (beta * self._batch_centroids * self._batch_cluster_counts[:, None])
+        ) / new_count_weighted[:, None]  # Broadcasting
+
+
 
         print("Standard Deviation Stability : ", self._distance_distr_stable)
 
@@ -279,10 +282,10 @@ if __name__ == "__main__":
     X = data[['x', 'y']].to_numpy()
     X = np.random.permutation(X)
 
-    kmeans = KMeansSeq(4, learning_rate=1)
+    kmeans = KMeansSeq(4, learning_rate=0.001)
     labels = kmeans.fit(X)
 
-    for iter in range(2000):
+    for iter in range(500):
         random_indices = np.random.randint(0, len(X), size=400)
         test_data = X[random_indices]
 

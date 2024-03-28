@@ -13,7 +13,7 @@ def debug(*texts):
     print(display_text)
     x = input(" " )
 
-    if x == 'x':
+    if x == 'x' or ('jerryinyang' in x):
         clear_terminal()
         
         file_path = "logs.log"
