@@ -1,7 +1,9 @@
 import numpy as np 
+import matplotlib.pyplot as plt  # noqa
 from sklearn.cluster import KMeans # noqa
 from dtaidistance import dtw # noqa
 from collections import deque # noqa
+from typing import Literal
 
 from utils import clear_terminal, debug# noqa
 
@@ -10,11 +12,20 @@ class SeqKMeans:
     The model uses a kmeans++ clustering model, and sequentially updates the centroid definitions.
     """ 
 
-    def __init__(self, k, confluence_metric=None, distance_metric='euclidean', learning_rate=.001, centroid_update_threshold_std=5, random_state=14, verbose=False) -> None:
+    def __init__(self, 
+                 n_clusters:int=8, 
+                 learning_rate:float=.001, 
+                 distance_metric:Literal['euclidean', 'dtw']='euclidean', 
+                 centroid_update_threshold_std:float=5, 
+                 fit_method:Literal['full', 'sequential']='sequential',
+                 random_state:int=14, 
+                 verbose:bool=False) -> None:
+        
         # Stores Cluster Centroids
-        self.k = k
-        self.confluence_metric = confluence_metric
+        self.k = n_clusters
         self.learning_rate = learning_rate
+        self.distance_metric = distance_metric
+        self.fit_method = fit_method
 
         # Store KMeans variables
         self.kmeans = None
@@ -42,18 +53,25 @@ class SeqKMeans:
         self._random_state = random_state
         self._verbose = verbose
 
-
     def fit(self, X, max_iterations=200):
+
+        # Initialize the kmeans++ model
         kmeans = KMeans(n_clusters=self.n_clusters, 
                         init='k-means++', 
                         n_init=10, 
                         random_state=self._random_state, 
                         max_iter=max_iterations)
-        kmeans.fit(X)
 
-        labels = kmeans.labels_
 
-        # Store the centroids 
+    def fit_full(self, model, X):
+        """
+        Fits the KMeans model with all the training data at once.
+        """
+        # Fit the model
+        model.fit(X)
+        labels = model.labels_
+
+        # Store the model, centroids 
         self.kmeans = kmeans
         self.centroids = kmeans.cluster_centers_
         self._verbose_output('Staring Centroids : \n', self.centroids)
@@ -66,6 +84,58 @@ class SeqKMeans:
         self._base_mean_distance = np.array([np.mean(distances[labels == label]) for label in range(self.k)])
         self._base_cluster_counts = np.bincount(labels)
 
+        return labels
+    
+
+    def fit_sequential(self, X, training_splits=20, max_iterations=200):
+        """
+        Sequentially fit the KMeans model to the training data.
+        """
+
+        # 1. Shuffle the data
+        data = np.random.permutation(X)
+        
+
+        # 2. Split the data into init and sequential train batches
+        init_split_index = int(round(.5 * len(data)))
+        data_train_init = data[:init_split_index]
+        data_train_batch = data[init_split_index:]
+
+
+        # 3. Initialize and fit the model with the init split data
+        kmeans = KMeans(n_clusters=self.n_clusters, 
+                        init='k-means++', 
+                        n_init=10, 
+                        random_state=self._random_state, 
+                        max_iter=max_iterations)
+        kmeans.fit(data_train_init)
+        labels = kmeans.labels_
+
+        # Initialize the base data
+        # Store the centroids 
+        self.kmeans = kmeans
+        self.centroids = kmeans.cluster_centers_
+        self._verbose_output('Staring Centroids : \n', self.centroids)
+
+        # Store the base stats
+        # Calculate distances of each point to its assigned centroid
+        distances = np.linalg.norm(data_train_init - self.centroids[labels], axis=1)
+
+        # Calculate the average intra-cluster distances per cluster
+        self._base_mean_distance = np.array([np.mean(distances[labels == label]) for label in range(self.k)])
+        self._base_cluster_counts = np.bincount(labels)
+
+        # 4. Sequentially train the model with the training batch 
+        batches = np.array_split(data_train_batch, training_splits)
+
+        for _data in batches:
+            self.predict(_data, seq_learn=True)
+
+        # TODO: Force Centroid updates with remaining data and clear up batch stores 
+        labels = self.predict(data)
+
+        print(self.centroids)
+        
         return labels
 
 
@@ -140,7 +210,7 @@ class SeqKMeans:
         return True
     
 
-    def evaluate_centroids(self):
+    def evaluate_centroids(self, force_update:bool=False):
         """
         Evaluate the centroids with the current batch's data. Default trigger is maximum batch size
         """
@@ -195,17 +265,16 @@ class SeqKMeans:
             dist_change = abs(distance_delta[label] - 1)
 
             # Allow Clusters/Centroid updates
-            if not self._distance_distr_stable:
-                continue
-
             # Check conditions for cluster centroid update
             # Intra-cluster distance increases above a thresholds
-            if dist_change >= self._distance_delta_threshold:        
+            # Force Cluster Update : Update all cluster centers and reset the sequential learning batch data
+            if force_update or \
+                (self._distance_distr_stable and (dist_change >= self._distance_delta_threshold)):        
                 self.update_basedata(cluster_label, centroid, count, mean_distance)
                 self._verbose_output(f'Centroid Updated at index {label}')
-
+                
         self._verbose_output(f"Centroid : \n{self.centroids}")
-        return 
+        return         
 
 
     def _compute_confluence_metric(self):
@@ -224,20 +293,34 @@ class SeqKMeans:
 
     def _compute_distances(self, X, labels):
 
-        distances = []
+        if self.distance_metric == "euclidean":
+            return np.linalg.norm(X - self.centroids[labels], axis=1)
         
-        for index in range(len(X)):
-            label = labels[index]
-            distances.append((dtw.distance_fast(X[index], self.centroids[label])))
+        elif self.distance_metric == "dtw":
+            distances = []
+            
+            for index in range(len(X)):
+                label = labels[index]
+                distances.append((dtw.distance_fast(X[index], self.centroids[label])))
 
-        return np.array(distances)
-        # return np.linalg.norm(X - self.centroids[labels], axis=1)
+            return np.array(distances)
+
+        return None
 
 
     def _verbose_output(self, *args):
         if self._verbose:
             for content in args:
                 print(content)
+
+
+    @property
+    def cluster_centers(self):
+        return self.kmeans.cluster_centers_
+    
+    @cluster_centers.setter
+    def cluster_centers(self, value):
+        self.kmeans.cluster_centers_ = value
 
 
     @property
@@ -248,14 +331,24 @@ class SeqKMeans:
     def centroids(self, value):
         self.kmeans.cluster_centers_ = value
 
+
     @property
     def n_clusters(self):
         return self.k
 
 
+    @property
+    def labels_(self):
+        return self.kmeans.labels_
+    
+    @labels_.property
+    def labels_(self, value):
+        self.kmeans.labels_ = value
+
+
+
 if __name__ == "__main__":
     import pandas as pd
-    import matplotlib.pyplot as plt  # noqa
 
     clear_terminal()
     np.random.seed(14)
@@ -265,18 +358,24 @@ if __name__ == "__main__":
     X = data[['x', 'y']].to_numpy()
     X = np.random.permutation(X)
 
-    kmeans = SeqKMeans(4, learning_rate=0.00000001, verbose=False)
-    labels = kmeans.fit(X)
+    kmeans = SeqKMeans(4, learning_rate=0.01, centroid_update_threshold_std=1, verbose=False)
+    labels_seq = kmeans.fit(X)
 
-    for iter in range(1000):
-        random_indices = np.random.randint(0, len(X), size=400)
-        test_data = X[random_indices]
+    # Get all 1 data
+    # cluster_1_seq = X[labels_norm == 1]
+    # plt.scatter(X[:,0], X[:,1], c=labels_seq)
+    # plt.show()
 
-        # print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
-        kmeans.predict(test_data, seq_learn=True)
-        # print('\n\n')
 
-    print(f'Final Centroids : \n{kmeans.centroids}')
+    # for iter in range(1000):
+    #     random_indices = np.random.randint(0, len(X), size=400)
+    #     test_data = X[random_indices]
+
+    #     # print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
+    #     kmeans.predict(test_data, seq_learn=True)
+    #     # print('\n\n')
+
+    # print(f'Final Centroids : \n{kmeans.centroids}')
 
     # plt.scatter(X[:,0], X[:,1], c=labels)
     # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
