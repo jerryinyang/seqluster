@@ -53,7 +53,8 @@ class SeqKMeans:
         self._random_state = random_state
         self._verbose = verbose
 
-    def fit(self, X, max_iterations=200):
+
+    def fit(self, X, max_iterations=200, training_splits=20):
 
         # Initialize the kmeans++ model
         kmeans = KMeans(n_clusters=self.n_clusters, 
@@ -62,14 +63,23 @@ class SeqKMeans:
                         random_state=self._random_state, 
                         max_iter=max_iterations)
 
+        # Different methods for fitting the model to training data
+        if self.fit_method == 'full':
+            self.labels_ = self.fit_full(kmeans, X)
+        
+        else:
+            self.labels_ = self.fit_sequential(kmeans, X, training_splits=training_splits)
 
-    def fit_full(self, model, X):
+        return self.labels_
+
+
+    def fit_full(self, kmeans, X):
         """
         Fits the KMeans model with all the training data at once.
         """
         # Fit the model
-        model.fit(X)
-        labels = model.labels_
+        kmeans.fit(X)
+        labels = kmeans.labels_
 
         # Store the model, centroids 
         self.kmeans = kmeans
@@ -84,10 +94,12 @@ class SeqKMeans:
         self._base_mean_distance = np.array([np.mean(distances[labels == label]) for label in range(self.k)])
         self._base_cluster_counts = np.bincount(labels)
 
+        print("Starting Centroid : \n", self.centroids)
+
         return labels
     
 
-    def fit_sequential(self, X, training_splits=20, max_iterations=200):
+    def fit_sequential(self, kmeans, X, training_splits=20):
         """
         Sequentially fit the KMeans model to the training data.
         """
@@ -95,19 +107,12 @@ class SeqKMeans:
         # 1. Shuffle the data
         data = np.random.permutation(X)
         
-
         # 2. Split the data into init and sequential train batches
         init_split_index = int(round(.5 * len(data)))
         data_train_init = data[:init_split_index]
         data_train_batch = data[init_split_index:]
 
-
-        # 3. Initialize and fit the model with the init split data
-        kmeans = KMeans(n_clusters=self.n_clusters, 
-                        init='k-means++', 
-                        n_init=10, 
-                        random_state=self._random_state, 
-                        max_iter=max_iterations)
+        # 3. Fit the model with the init split data
         kmeans.fit(data_train_init)
         labels = kmeans.labels_
 
@@ -131,10 +136,13 @@ class SeqKMeans:
         for _data in batches:
             self.predict(_data, seq_learn=True)
 
-        # TODO: Force Centroid updates with remaining data and clear up batch stores 
-        labels = self.predict(data)
+        # Force Centroid updates with remaining data and clear up batch stores 
+        self.evaluate_centroids(force_update=True)
 
-        print(self.centroids)
+        # Generate labels for for the entire training data
+        labels = self.predict(X)
+
+        print("Starting Centroid : \n", self.centroids)
         
         return labels
 
@@ -341,7 +349,7 @@ class SeqKMeans:
     def labels_(self):
         return self.kmeans.labels_
     
-    @labels_.property
+    @labels_.setter
     def labels_(self, value):
         self.kmeans.labels_ = value
 
@@ -358,7 +366,7 @@ if __name__ == "__main__":
     X = data[['x', 'y']].to_numpy()
     X = np.random.permutation(X)
 
-    kmeans = SeqKMeans(4, learning_rate=0.01, centroid_update_threshold_std=1, verbose=False)
+    kmeans = SeqKMeans(4, learning_rate=0.1, centroid_update_threshold_std=1, verbose=False)
     labels_seq = kmeans.fit(X)
 
     # Get all 1 data
