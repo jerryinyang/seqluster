@@ -8,8 +8,45 @@ from sklearn.cluster import KMeans
 
 class SeqKMeans:
     """
-    The model uses a kmeans++ clustering model, and sequentially updates the centroid definitions.
-    """ 
+    The SeqKMeans class implements a variant of the KMeans clustering algorithm that updates centroids sequentially. It employs a combination of kmeans++ initialization and sequential centroid updates for better efficiency and accuracy in clustering.
+
+    Parameters:
+    - n_clusters (int): Number of clusters to form. Default is 8.
+    - learning_rate (float): Rate at which to update centroids based on new data. Default is 0.001.
+    - distance_metric (Literal['euclidean', 'dtw']): Distance metric to use, either 'euclidean' or 'dtw' (Dynamic Time Warping). Default is 'euclidean'.
+    - centroid_update_threshold_std (float): Threshold for determining when to update centroids based on standard deviation. Default is 5.
+    - fit_method (Literal['full', 'sequential']): Method for fitting the model to training data, either 'full' or 'sequential'. Default is 'sequential'.
+    - training_splits (int): Number of splits for sequential training. Default is 20.
+    - random_state (int): Seed for random number generation. Default is 14.
+    - verbose (bool): Whether to output verbose information during training. Default is False.
+
+    Methods:
+    - fit(X, max_iterations=200): Fits the model to the input data.
+    - predict(X, seq_learn=True): Predicts the cluster labels for new data points.
+
+    Properties:
+    - cluster_centers_: Getter and setter for cluster centers.
+    - centroids: Getter and setter for centroids.
+    - n_clusters: Getter for the number of clusters.
+    - labels_: Getter and setter for cluster labels.
+
+    Example Usage:
+    ```python
+    # Import SeqKMeans class
+    from seq_kmeans import SeqKMeans
+
+    # Initialize SeqKMeans with default parameters
+    seq_kmeans = SeqKMeans()
+
+    # Fit the model to the training data
+    seq_kmeans.fit(train_data)
+
+    # Predict cluster labels for new data points
+    new_labels = seq_kmeans.predict(new_data)
+    ```
+
+
+    """
 
     def __init__(self, 
                  n_clusters:int=8, 

@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='seqluster',  # Replace with your package name
-    version='1.0.1',  # Set your initial version
+    version='1.0.2',  # Set your initial version
     description='KMeans Clustering Algorithm, with Sequential Learning Implementation.',
     author='Jerry Inyang',
     author_email='jerprog0@gmail.com',
