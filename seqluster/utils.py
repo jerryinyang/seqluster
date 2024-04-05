@@ -1,5 +1,6 @@
 import os
 
+
 def clear_terminal():
         # Check the operating system
         if os.name == "posix":  # For Linux and macOS

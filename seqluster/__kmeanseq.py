@@ -1,9 +1,10 @@
-import numpy as np
-from kmeans import KMeansPlus
-from dtaidistance import dtw  # noqa
-from collections import deque # noqa
+from collections import deque  # noqa
 
-from utils import clear_terminal, debug# noqa
+import numpy as np
+from dtaidistance import dtw  # noqa
+from seqluster.__kmeans import KMeansPlus
+
+from seqluster.utils import clear_terminal, debug  # noqa
 
 
 class KMeansSeq(KMeansPlus): 
@@ -219,60 +220,10 @@ class KMeansSeq(KMeansPlus):
 
         return
     
-        
-# if __name__ == "__main__":
-#     import pandas as pd
-#     import matplotlib.pyplot as plt  # noqa
-
-#     prices = pd.read_parquet('prices.parquet')
-
-#     raw_data = prices["close"].dropna(axis=0)
-#     raw_data = raw_data.to_numpy()
-
-#     # Generate windows
-#     window_size = 24
-
-#     X = []
-    
-#     for index in range(window_size, len(raw_data)):
-#         start_index = index - window_size
-#         end_index = index
-
-#         X.append(raw_data[start_index : end_index])
-
-#     # Split X Data
-#     split_percent = .7
-#     split_index = int(round(len(X) * split_percent))
-    
-#     X, X_test = np.array(X[:split_index]), np.array(X[split_index:])
-#     # X = np.random.permutation(X)
-#     # X_test = np.random.permutation(X_test)
-
-#     kmeans = KMeansSeq(4, learning_rate=0.001, change_threshold_std=3)
-#     labels = kmeans.fit(X)
-
-#     for iter in range(20):
-#         start_index = iter * 200
-#         end_index = min(start_index + 200 + 1, len(X_test))
-
-#         test_data = np.array(X_test[start_index : end_index])
-
-#         print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
-#         kmeans.predict(test_data, seq_learn=True)
-
-#         if end_index == len(X_test):
-#             print('Broken')
-#             break
-#         print('\n\n')
-
-#     # plt.scatter(X[:,0], X[:,1], c=labels)
-#     # plt.scatter(kmeans.centroids[:, 0], kmeans.centroids[:, 1], c='fuchsia', marker='*', s=200)
-#     # plt.show()
-    
 
 if __name__ == "__main__":
-    import pandas as pd
     import matplotlib.pyplot as plt  # noqa
+    import pandas as pd
 
     clear_terminal()
     np.random.seed(14)
@@ -289,7 +240,7 @@ if __name__ == "__main__":
         random_indices = np.random.randint(0, len(X), size=400)
         test_data = X[random_indices]
 
-        print(f"Iteration {iter + 1}–––––––––––––––––––––––––––––––––––––––––––––")
+        print(f"Iteration {iter + 1}-------------------------")
         kmeans.predict(test_data, seq_learn=True)
         print('\n\n')
 

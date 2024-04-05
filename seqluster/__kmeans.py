@@ -158,8 +158,8 @@ class KMeansPlus:
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt # noqa
     import pandas as pd
-    import matplotlib.pyplot as plt  # noqa
 
     data = pd.read_csv("/Users/jerryinyang/Code/seqluster/data.csv")
 

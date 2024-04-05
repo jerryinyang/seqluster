@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: seqluster
+Version: 1.0.0
+Summary: KMeans Clustering Algorithm, with Sequential Learning Implementation.
+Author: Jerry Inyang
+Author-email: jerprog0@gmail.com
