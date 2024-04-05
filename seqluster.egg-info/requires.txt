@@ -2,7 +2,8 @@ requests
 pandas
 numpy
 matplotlib
-scikit-learnstumpy
+scikit-learn
+stumpy
 sktime
 tslearn
 dtaidistance
